@@ -1,0 +1,116 @@
+%% MATLAB Fetal Heart Rate Monitoring Dashboard (FINAL UPDATED VERSION)
+clc; clear; close all;
+
+%% -----------------------------
+% 1. SIMULATED CTG DATA
+%% -----------------------------
+fs = 4;                     % Sampling frequency (Hz) - standard CTG
+duration = 20*60;           % 20 minutes
+t = (0:1/fs:duration-1/fs)';
+N = length(t);
+
+% Simulated FHR (baseline 140 bpm)
+baseline_true = 140;
+fhr = baseline_true ...
+      + 5*sin(2*pi*0.01*t) ...
+      + 3*randn(size(t));
+
+% Safe event creation (dynamic indexing)
+event_len = round(15*fs);   % 15-second events
+
+acc1 = round(0.3*N);
+acc2 = round(0.6*N);
+dec1 = round(0.8*N);
+
+fhr(acc1:acc1+event_len-1) = fhr(acc1:acc1+event_len-1) + 20;
+fhr(acc2:acc2+event_len-1) = fhr(acc2:acc2+event_len-1) + 18;
+fhr(dec1:dec1+event_len-1) = fhr(dec1:dec1+event_len-1) - 25;
+
+% Simulated uterine contraction
+uc = 20 + 40*exp(-0.0005*(t - t(round(N/2))).^2);
+
+%% -----------------------------
+% 2. SIGNAL PREPROCESSING (FIXED FILTER)
+%% -----------------------------
+% Correct frequency range for fs = 4 Hz
+[b,a] = butter(3, [0.03 1]/(fs/2), 'bandpass');
+fhr_filtered = filtfilt(b,a,fhr);
+fhr_smooth = movmean(fhr_filtered,5);
+
+%% -----------------------------
+% 3. FEATURE EXTRACTION
+%% -----------------------------
+baseline = mean(fhr_smooth);
+variability = std(fhr_smooth);
+
+% Acceleration detection (>=15 bpm for >=15 sec)
+acc_threshold = baseline + 15;
+acc_binary = fhr_smooth > acc_threshold;
+num_acc = sum(diff([0; acc_binary])==1);
+
+% Deceleration detection (>=15 bpm drop)
+dec_threshold = baseline - 15;
+dec_binary = fhr_smooth < dec_threshold;
+num_dec = sum(diff([0; dec_binary])==1);
+
+%% -----------------------------
+% 4. RISK CLASSIFICATION
+%% -----------------------------
+status = "Normal";
+color_status = [0 0.7 0];
+
+if baseline < 110
+    status = "Bradycardia";
+    color_status = [1 0 0];
+elseif baseline > 160
+    status = "Tachycardia";
+    color_status = [1 0 0];
+elseif variability < 3
+    status = "Low Variability";
+    color_status = [1 0.5 0];
+end
+
+%% -----------------------------
+% 5. DASHBOARD VISUALIZATION
+%% -----------------------------
+figure('Name','Fetal Heart Rate Monitoring Dashboard','Color','w');
+
+subplot(3,1,1)
+plot(t/60, fhr_smooth, 'b','LineWidth',1);
+hold on
+yline(baseline,'k--','Baseline');
+yline(110,'r--');
+yline(160,'r--');
+title('Fetal Heart Rate (FHR)');
+xlabel('Time (minutes)');
+ylabel('BPM');
+ylim([60 200]);
+grid on
+
+subplot(3,1,2)
+plot(t/60, uc,'m','LineWidth',1);
+title('Uterine Contractions');
+xlabel('Time (minutes)');
+ylabel('Intensity');
+grid on
+
+subplot(3,1,3)
+axis off
+text(0.1,0.8,['Baseline: ' num2str(baseline,'%.2f') ' bpm'],'FontSize',12);
+text(0.1,0.65,['Variability (STD): ' num2str(variability,'%.2f')],'FontSize',12);
+text(0.1,0.5,['Accelerations: ' num2str(num_acc)],'FontSize',12);
+text(0.1,0.35,['Decelerations: ' num2str(num_dec)],'FontSize',12);
+text(0.1,0.15,['Status: ' char(status)],...
+     'FontSize',14,'FontWeight','bold','Color',color_status);
+
+sgtitle('MATLAB-Based Fetal Monitoring Dashboard');
+
+%% -----------------------------
+% 6. CONSOLE OUTPUT
+%% -----------------------------
+disp("========== FHR ANALYSIS ==========");
+disp("Baseline (bpm): " + baseline);
+disp("Variability (STD): " + variability);
+disp("Accelerations: " + num_acc);
+disp("Decelerations: " + num_dec);
+disp("Clinical Status: " + status);
